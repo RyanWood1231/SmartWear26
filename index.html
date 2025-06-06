@@ -175,7 +175,7 @@
   }
 
   async function fetchWeather(city) {
-    const url = `http://api.weatherapi.com/v1/forecast.json?key=${API_KEY}&q=${encodeURIComponent(city)}&days=1&aqi=no&alerts=no`;
+    const url = `https://api.weatherapi.com/v1/forecast.json?key=${API_KEY}&q=${encodeURIComponent(city)}&days=1&aqi=no&alerts=no`;
     try {
       const res = await fetch(url);
       logMsg(`API 返回状态码: ${res.status}`);
