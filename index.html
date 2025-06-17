@@ -64,7 +64,7 @@
 <script>
   const API_KEY = "babfe44b42344638810133005240407";
   const TARGET = 26;
-  // 衣物库，分类 top/bottom/outer/accessory，可叠穿的 outer/accessory
+  // 衣物库
   const clothes = [
     {name:'短袖T恤', val:1, type:'top'},
     {name:'背心', val:0.5, type:'top'},
@@ -87,7 +87,7 @@
     {name:'手套', val:1.5, type:'accessory'},
   ];
   function log(msg){ document.getElementById('log').textContent = msg; }
-  // 生成推荐组合，确保至少 top+bottom，可叠穿 outer/accessory
+  // 生成推荐组合
   function getCombos(temp){
     const need = TARGET - temp;
     let results = [];
@@ -108,50 +108,74 @@
     dfs(0, [], 0);
     return results.sort((a,b)=>Math.abs(a.sum-need)-Math.abs(b.sum-need)).slice(0,3);
   }
-  // 高低温差大时，提供分时或可拆卸建议
+  // 高温轻薄建议
+  function lightSuggest(temp){
+    if(temp>=30) return ['背心 + 短裤','短袖T恤 + 短裤'];
+    if(temp>=26) return ['短袖T恤 + 薄裤子','背心 + 薄裙'];
+    return null;
+  }
+  // 温差建议
   function rangeSuggest(minT, maxT){
-    const diff = maxT-minT;
-    if(diff>=8){
-      return `早晚或阴天按 ${minT}℃ 计算，推荐穿搭含外套；日间 ${maxT}℃ 可脱外套，仅保留基础 top+bottom。建议选择可拆卸/可叠穿外套。`;
+    if(maxT - minT >= 8){
+      return `早晚按 ${minT}℃ 参考，推荐配置外套；日间 ${maxT}℃ 可去除外层，仅保留基础搭配。`;
     }
     return null;
   }
   async function fetchWeather(city){
-    const url=`https://api.weatherapi.com/v1/forecast.json?key=${API_KEY}&q=${encodeURIComponent(city)}&days=1&aqi=no&alerts=no`;
-    const res=await fetch(url);
+    const url = `https://api.weatherapi.com/v1/forecast.json?key=${API_KEY}&q=${encodeURIComponent(city)}&days=1&aqi=no&alerts=no`;
+    const res = await fetch(url);
     log(`Status: ${res.status}`);
     if(!res.ok) throw new Error('请求失败 '+res.status);
-    const js=await res.json();
-    const day=js.forecast.forecastday[0].day;
+    const js = await res.json();
+    const day = js.forecast.forecastday[0].day;
     return {min:day.mintemp_c, max:day.maxtemp_c, rain:parseInt(day.daily_chance_of_rain,10)};
   }
-  function renderCity(minT,maxT,rain,combos,text){
-    let rainTxt=`降雨概率 ${rain}%；`;
-    let html=`<p>${text} 温度范围 <span class="highlight">${minT.toFixed(1)}℃ - ${maxT.toFixed(1)}℃</span>，${rainTxt}</p>`;
-    const rangeTip=rangeSuggest(minT,maxT);
-    if(rangeTip){ html+=`<p class="highlight">${rangeTip}</p>`; }
-    html+='<h4>推荐穿衣：</h4><ul>';
-    combos.forEach((c,i)=>{ html+=`<li>方案${i+1}: ${c.items.map(x=>x.name).join(' + ')} （${c.sum.toFixed(1)}℃）</li>`; });
-    html+='</ul>';
-    document.getElementById('result').innerHTML=html;
+  function renderCity(minT, maxT, rain, combos){
+    const rainTxt = `降雨概率 ${rain}%`;
+    let html = `<p>温度范围 <span class="highlight">${minT.toFixed(1)}℃ - ${maxT.toFixed(1)}℃</span>，${rainTxt}</p>`;
+    const rangeTip = rangeSuggest(minT, maxT);
+    if(rangeTip) html += `<p class="highlight">${rangeTip}</p>`;
+    const avg = (minT + maxT) / 2 - (rain>50?1:0);
+    const light = lightSuggest(avg);
+    if(light){
+      html += '<h4>轻薄建议：</h4><ul>' + light.map(x=>`<li>${x}</li>`).join('') + '</ul>';
+    } else {
+      html += '<h4>推荐穿衣：</h4><ul>';
+      combos.forEach((c,i)=>{
+        html += `<li>方案${i+1}: ${c.items.map(x=>x.name).join(' + ')} （${c.sum.toFixed(1)}℃）</li>`;
+      });
+      html += '</ul>';
+    }
+    if(rain>50) html += `<p style="color:#f55;">建议携带雨具！</p>`;
+    document.getElementById('result').innerHTML = html;
   }
-  document.getElementById('cityForm').onsubmit=async e=>{
-    e.preventDefault(); const city=document.getElementById('cityInput').value;
-    document.getElementById('result').innerHTML='<p class="loading">加载中...</p>';
-    try{
-      const w=await fetchWeather(city);
-      const {min,max,rain}=w;
-      const avg=(min+max)/2 - (rain>50?1:0);
-      const combos=getCombos(avg);
-      renderCity(min,max,rain,combos,`今日${city}`);
-    }catch(err){ document.getElementById('result').innerHTML=`<p style="color:#f55;">${err.message}</p>`; }
+  document.getElementById('cityForm').onsubmit = async e => {
+    e.preventDefault();
+    const city = document.getElementById('cityInput').value.trim();
+    document.getElementById('result').innerHTML = '<p class="loading">加载中...</p>';
+    try {
+      const {min, max, rain} = await fetchWeather(city);
+      const avg = (min + max) / 2 - (rain>50?1:0);
+      const combos = getCombos(avg);
+      renderCity(min, max, rain, combos);
+    } catch(err) {
+      document.getElementById('result').innerHTML = `<p style="color:#f55;">${err.message}</p>`;
+    }
   };
-  document.getElementById('manualForm').onsubmit=e=>{
-    e.preventDefault(); const t=parseFloat(document.getElementById('manualTemp').value);
+  document.getElementById('manualForm').onsubmit = e => {
+    e.preventDefault();
+    const t = parseFloat(document.getElementById('manualTemp').value);
     if(isNaN(t)) return;
-    const combos=getCombos(t);
-    document.getElementById('manualResult').innerHTML=`<h4>手动输入 ${t}℃ 推荐：</h4><ul>${combos.map((c,i)=>`<li>方案${i+1}: ${c.items.map(x=>x.name).join(' + ')} （${c.sum.toFixed(1)}℃）</li>`).join('')}</ul>`;
-  };  
+    const light = lightSuggest(t);
+    let html;
+    if(light){
+      html = '<h4>轻薄建议：</h4><ul>' + light.map(x=>`<li>${x}</li>`).join('') + '</ul>';
+    } else {
+      const combos = getCombos(t);
+      html = `<h4>手动输入 ${t}℃ 推荐：</h4><ul>` + combos.map((c,i)=>`<li>方案${i+1}: ${c.items.map(x=>x.name).join(' + ')} （${c.sum.toFixed(1)}℃）</li>`).join('') + '</ul>';
+    }
+    document.getElementById('manualResult').innerHTML = html;
+  };
 </script>
 </body>
 </html>
